@@ -29,7 +29,7 @@ EXPOSE 8000
 
 # Health check against live health endpoint
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+    CMD curl -f "http://localhost:${PORT:-8000}/api/v1/health" || exit 1
 
 # Run database migrations, bootstrap admin account if env provided, and launch Uvicorn on dynamic $PORT
 CMD ["sh", "-c", "alembic -c alembic.ini upgrade head && (python init_admin.py || true) && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
