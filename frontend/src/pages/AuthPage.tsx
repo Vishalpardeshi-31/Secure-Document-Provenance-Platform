@@ -57,7 +57,7 @@ export const AuthPage: React.FC = () => {
             </span>
             <div className="flex items-center gap-2">
               <StatusBadge
-                status={isHealthLoading ? 'CHECKING' : health?.database.status || 'DOWN'}
+                status={isHealthLoading ? 'CHECKING' : (typeof health === 'object' && health?.database?.status) || 'DOWN'}
                 variant="health"
               />
               <button

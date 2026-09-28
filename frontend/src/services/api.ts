@@ -47,6 +47,13 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
     }
   } else {
     data = await response.text();
+    if (typeof data === 'string' && (data.trim().startsWith('<!doctype') || data.trim().startsWith('<html'))) {
+      throw new ApiError(
+        'Unable to connect to the security backend. The server returned an HTML error page.',
+        'API_UNAVAILABLE',
+        response.status
+      );
+    }
   }
 
   if (!response.ok) {
