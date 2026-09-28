@@ -440,6 +440,209 @@ An authorized investigator or auditor independently verifies provenance without 
 > **CRITICAL FORENSIC LIMITATION:**  
 > A valid cryptographic provenance record establishes that the recorded decryption event was authorized, conformed to active access policy, successfully authenticated against the stored ciphertext, and was cryptographically signed by the platform's provenance signing identity. **It does not by itself prove that the recipient intentionally leaked the document or establish physical possession of an out-of-band leaked copy.** Forensic attribution of leaked files requires additional watermarking, device attestation, and forensic leak-analysis capabilities (scheduled for future phases).
 
+---
 
-#   S e c u r e - D o c u m e n t - P r o v e n a n c e - P l a t f o r m  
- 
+## 13. Phase 10: Tamper-Evident Provenance Hash Chain & Permissioned Ledger
+
+### A. Three-Layer Provenance Architecture
+
+The platform strictly separates storage, cryptographic evidence, and ledger anchoring into three distinct architectural layers:
+
+```text
+Layer 1: Application Database (PostgreSQL)
+  └── Stores operational data, relational indexes, and queryable state.
+      (PostgreSQL is NOT treated as an immutable ledger; administrative DB access can alter rows)
+
+Layer 2: Cryptographic Provenance (ML-DSA-65 Signed Records)
+  └── NIST FIPS 204 digital signatures over canonical length-delimited payloads.
+      (Proves authenticity and unforgeable evidence of decryption events)
+
+Layer 3: Tamper-Evident Ledger (Append-Only Hash Chain & Anchoring)
+  └── Chronologically linked SHA-256 hash chain anchored into an append-only ledger adapter.
+      (Protects historical provenance against silent database modification, reordering, or deletion)
+```
+
+The execution pipeline for every successful decryption event is:
+
+```text
+Successful Decryption
+        ↓
+Canonical Provenance Record (PROVENANCE-V1)
+        ↓
+SHA-256 Digest
+        ↓
+ML-DSA-65 Signature
+        ↓
+Server-Side Serialized Lock & Sequence Assignment (0 → 1 → 2 → 3...)
+        ↓
+Fetch Previous Record Hash (Genesis for sequence 1, previous chain_hash thereafter)
+        ↓
+Build Canonical Chain Payload (PROVENANCE-CHAIN-V1)
+        ↓
+SHA-256 Digest → Current Chain Hash
+        ↓
+Persist Append-Only Record to PostgreSQL
+        ↓
+Enqueue Ledger Outbox (IDEMPOTENT KEY: chain_id:chain_sequence)
+        ↓
+Immediate Ledger Anchor Attempt (Real LedgerAdapter: TamperEvidentFileLedgerAdapter)
+        ↓
+Real Ledger Transaction ID ("TX-...") & CONFIRMED Status
+        ↓
+Update Persistent ProvenanceChainHead
+```
+
+### B. Hash Chain Specification & Canonical Encoding
+
+Every event in the chain is bound to its exact predecessor using length-delimited deterministic canonical serialization:
+
+```text
+PROVENANCE-CHAIN-V1
+chain_id:25:PLATFORM-PROVENANCE-CHAIN
+chain_sequence:1:1
+previous_record_hash:64:9e8a...
+canonical_record_hash:64:a1b2...
+event_id:36:9f62...
+```
+
+The current block's `chain_hash` is computed as:
+$$\text{chain\_hash} = \text{SHA-256}(\text{canonical\_chain\_bytes})$$
+
+- **Genesis Record (Sequence 0)**: Generated deterministically during platform initialization. It features `previous_record_hash = "0" * 64`, `signature_algorithm = "SYSTEM-GENESIS"`, and is anchored as the immutable root of trust.
+- **Strict Monotonic Sequences**: Sequence numbers are assigned exclusively server-side within a critical section guarded by concurrency locks. Clients cannot specify or alter sequence numbers.
+- **Database Immutability Constraints**: Enforced via PostgreSQL `UNIQUE(chain_id, chain_sequence)` and `UNIQUE(chain_id, chain_hash)`.
+
+### C. Permissioned Ledger Abstraction & Real Transaction Semantics
+
+The platform interacts with the ledger via the `LedgerAdapter` interface (`backend/app/ledger/`):
+- `append_record(record_payload) -> LedgerTransactionResult`
+- `get_record(ledger_tx_id) -> Optional[Dict]`
+- `verify_record(ledger_tx_id, expected_chain_hash) -> LedgerVerificationResult`
+- `get_chain_head(chain_id) -> Dict`
+
+**No Plaintext in the Ledger**:
+The ledger stores **only** provenance evidence and metadata:
+- `chain_id`, `chain_sequence`, `event_id`, `document_id`, `document_version_id`
+- `canonical_record_hash`, `previous_record_hash`, `chain_hash`
+- `signature_key_id`, `signature_key_version`, `signature`
+- `event_timestamp`, `ledger_protocol_version`
+
+**Under no circumstances are plaintext documents, encrypted ciphertexts, DEKs, recipient KEKs, shared secrets, or passwords sent to the ledger.**
+
+### D. Ledger Outbox & Network Reliability
+
+To prevent distributed transaction failures from causing data loss or silent drops:
+1. Every provenance creation atomically creates a `ledger_outbox` entry in the same PostgreSQL transaction.
+2. The service attempts synchronous ledger submission. If the ledger is temporarily offline or unavailable, the record is marked `SIGNED_BUT_NOT_ANCHORED` (never fake-confirmed).
+3. A background worker / admin flusher processes pending outbox entries with bounded exponential backoff (`max_attempts=10`).
+4. Outbox submissions are strictly idempotent, deduplicating on `chain_id:chain_sequence`.
+
+### E. Full Chain Audit & Verification
+
+The platform provides full-chain audit capabilities via `POST /api/v1/provenance/chain/verify`:
+1. Loads Genesis (sequence 0) and validates root parameters.
+2. Iterates chronologically through every block to the latest head.
+3. Verifies sequence continuity ($s_i = s_{i-1} + 1$).
+4. Verifies hash linkage ($\text{prev\_hash}_i = \text{chain\_hash}_{i-1}$).
+5. Rebuilds canonical payload and recomputes `SHA-256`, verifying against stored `chain_hash`.
+6. Verifies ML-DSA-65 post-quantum digital signature against the operational public key.
+7. Queries the ledger adapter to verify independent anchor state and hash equality.
+8. Pinpoints the first detected corruption without masking errors.
+
+### F. Threat Model & Protections
+
+| Attack Vector | Threat Description | Detection / Prevention Mechanism |
+| :--- | :--- | :--- |
+| **Database Record Tampering** | Attacker with SQL access modifies plaintext hash, policy ID, or user ID in PostgreSQL. | `canonical_record_hash` and `chain_hash` recalculation mismatch; ML-DSA-65 signature verification fails; ledger anchor verification reports mismatch. |
+| **Provenance Record Deletion** | Malicious DB admin deletes a decryption record to conceal an unauthorized access event. | Full chain audit detects `SEQUENCE_GAP` and breaks the subsequent block's `previous_record_hash` linkage. |
+| **Event Reordering** | Attacker swaps the sequence of two access events. | Chain verification detects `PREVIOUS_HASH_MISMATCH` and `CHAIN_HASH_MISMATCH` on both swapped blocks. |
+| **Signature Substitution** | Attacker substitutes a different digital signature. | Cryptographic verification fails against the registered public key for that key version (`SIGNATURE_INVALID`). |
+| **Sequence Collisions** | Concurrent decryptions race to claim sequence numbers. | Server-side concurrency locking and database `UNIQUE(chain_id, chain_sequence)` constraint prevent duplicates. |
+| **Ledger Reference Mismatch** | DB points to a forged or mismatched transaction ID. | `verify_ledger_anchor` retrieves the actual ledger record and verifies byte-for-byte identity of `chain_hash`. |
+
+### G. Limitations & Honesty Declaration
+
+In accordance with strict enterprise security and SIH competition rules:
+1. **Tamper-Evident Ledger vs. Distributed Blockchain**:
+   - The default production adapter is `TamperEvidentFileLedgerAdapter`, a write-once, append-only cryptographic ledger with independent block hashing and real deterministic transaction IDs (`TX-...`).
+   - It is **honestly documented as a tamper-evident ledger layer**, NOT as a distributed Byzantine fault-tolerant blockchain. No fake mining, fake consensus, or fake proof-of-work is simulated.
+2. **Consensus & Node Count**:
+   - Current deployment runs as an enterprise single-node ledger anchor. Distributed multi-node consensus (e.g., via Hyperledger Fabric) can be plugged into the `LedgerAdapter` interface without modifying the core provenance application logic.
+3. **Ledger Outage Behavior**:
+   - During a ledger outage, decryption provenance is preserved in PostgreSQL and signed with ML-DSA-65, but explicitly marked as `SIGNED_BUT_NOT_ANCHORED`. The platform never falsely reports unanchored events as `CONFIRMED`.
+---
+
+## 14. Phase 11: Secure Ephemeral In-Memory Document Viewer & Expiration Lifecycle
+
+### A. Core Architecture & Zero-Disk Plaintext Model
+Phase 11 introduces a high-security, ephemeral in-memory document viewer designed to strictly prevent unauthorized persistence, forensic disk residue, and document exfiltration:
+
+`	ext
+Recipient (Authenticated & Authorized)
+        │
+        ├── 1. POST /api/v1/documents/{doc_id}/viewer-session (X-Device-ID)
+        │       ├── Authoritative policy & recipient verification
+        │       ├── Atomic AES-256-GCM authenticated decryption
+        │       ├── ML-DSA-65 post-quantum signed provenance record (Phase 9)
+        │       ├── Tamper-evident ledger hash chaining (Phase 10)
+        │       └── Issues bounded ViewerSession (UUIDv4, Default: 15m, Max: 60m)
+        │
+        ├── 2. GET /api/v1/viewer-sessions/{session_id}/content
+        │       ├── Strict user, device, and expiration validation
+        │       ├── Format & MIME type validation (PDF, TXT, JSON, CSV, MD, PNG, JPG)
+        │       ├── In-memory decryption only (Zero disk persistence)
+        │       ├── Forensic fingerprint preparation hook
+        │       └── Strict anti-caching response headers (no-store, no-cache, nosniff)
+        │
+        ├── 3. POST /api/v1/viewer-sessions/{session_id}/heartbeat
+        │       └── Updates last_activity_at without extending fixed expiration deadline
+        │
+        └── 4. POST /api/v1/viewer-sessions/{session_id}/close
+                └── Explicit termination: status set to COMPLETED & in-memory cache purged
+`
+
+### B. Security Guarantees & Enforcement Primitives
+
+| Security Control | Implementation Mechanism | Enforcement Standard |
+| :--- | :--- | :--- |
+| **Zero Disk Plaintext** | Plaintext is decrypted directly into memory buffers and never written to temporary files or disk. | Only AES-256-GCM ciphertext resides in storage/encrypted/. |
+| **Strict Anti-Caching** | HTTP response headers enforce browser and intermediary cache elimination. | Cache-Control: no-store, no-cache, must-revalidate, private, max-age=0, Pragma: no-cache, Expires: 0, X-Content-Type-Options: nosniff. |
+| **Device Binding** | Viewer sessions are cryptographically bound to registered client devices. | Requests without or with mismatched X-Device-ID are rejected with HTTP 403 (VIEWER_DEVICE_MISMATCH). |
+| **User Isolation** | Ownership validation prevents session token hijacking. | Attempting to access another user's viewer session returns HTTP 403 (VIEWER_UNAUTHORIZED). |
+| **Bounded Lifetime** | Server-enforced absolute expiration deadlines (expires_at). | Heartbeats cannot indefinitely extend session life; expired sessions return HTTP 403 (VIEWER_SESSION_EXPIRED). |
+| **Format Validation** | Strict whitelist of inline viewable MIME types. | Unsupported or binary formats (e.g. .exe, .zip) are rejected with HTTP 415 (VIEWER_FORMAT_UNSUPPORTED). |
+| **Dynamic Revocation** | If a document or device is administratively revoked, active viewer sessions terminate immediately. | Real-time status checking during every /content request. |
+| **Comprehensive Auditing** | All lifecycle transitions are logged to the immutable audit trail. | VIEWER_SESSION_CREATED, VIEWER_SESSION_ACCESS, VIEWER_SESSION_EXPIRED, VIEWER_SESSION_CLOSED, VIEWER_SESSION_REJECTED. |
+
+### C. Viewer Session State Machine
+
+`	ext
+[POST /viewer-session]
+         │
+         ▼
+      ACTIVE ──────────────(Heartbeat)─────────────► ACTIVE
+         │                                              │
+         ├─── (Duration expires) ──────► EXPIRED        │
+         │                                              │
+         ├─── (User closes viewer) ────► COMPLETED      │
+         │                                              │
+         └─── (Doc / Device revoked) ──► REVOKED ◄──────┘
+`
+
+### D. Verification & Automated Test Coverage
+The Phase 11 implementation is verified by 15 automated test suites in ackend/tests/test_secure_viewer_phase11.py:
+1. 	est_1_unauthorized_user_cannot_create_viewer_session: Unauthenticated requests rejected.
+2. 	est_2_non_recipient_cannot_create_viewer_session: Non-assigned recipients rejected.
+3. 	est_3_revoked_document_cannot_be_viewed: Revoked documents immediately inaccessible.
+4. 	est_4_revoked_device_cannot_create_or_access_viewer_session: Revoked devices blocked.
+5. 	est_5_expired_viewer_session_cannot_access_content: Server-side expiration strictly enforced.
+6. 	est_6_viewer_session_from_another_device_is_rejected: Cross-device session hijacking prevented.
+7. 	est_7_viewer_session_from_another_user_is_rejected: Cross-user session hijacking prevented.
+8. 	est_8_invalid_session_id_is_rejected: Non-existent session IDs rejected.
+9. 	est_9_tampered_encrypted_document_fails_authenticated_decryption: AES-256-GCM authentication failure on modified ciphertext.
+10. 	est_10_and_11_and_12_zero_plaintext_or_keys_persisted_or_leaked: Verifies disk storage has zero plaintext and no cryptographic key leakage.
+11. 	est_13_viewer_cannot_bypass_policy_by_direct_content_endpoint: Direct bypass attempts blocked.
+12. 	est_14_viewer_heartbeat_and_expiration: Activity tracking without session extension.
+13. 	est_15_closed_session_cannot_access_content: Explicit close immediately invalidates content delivery.
+14. 	est_16_supported_and_unsupported_formats: MIME whitelist enforcement.
+15. 	est_17_and_18_audit_events_and_provenance_integration: End-to-end audit and ledger anchoring verification.
