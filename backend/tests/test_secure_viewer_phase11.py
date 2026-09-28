@@ -366,7 +366,7 @@ def test_10_and_11_and_12_zero_plaintext_or_keys_persisted_or_leaked(client, vie
         headers={"Authorization": f"Bearer {rec1_tok}", "X-Device-ID": dev1.id},
     )
     assert content_res.status_code == 200
-    assert content_res.content == b"%PDF-1.4 TopSecretPlaintext123"
+    assert b"%PDF-1.4 TopSecretPlaintext123" in content_res.content
 
     # Verify security headers
     assert content_res.headers["cache-control"] == "no-store, no-cache, must-revalidate, private, max-age=0"

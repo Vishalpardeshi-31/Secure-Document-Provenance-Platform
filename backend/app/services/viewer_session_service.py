@@ -388,6 +388,8 @@ class ViewerSessionService:
             content=plaintext,
             mime_type=effective_mime_type,
             context=context,
+            db=db,
+            filename=doc.original_filename,
         )
 
         # 7. Update activity timestamp & record audit event

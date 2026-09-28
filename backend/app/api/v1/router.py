@@ -13,6 +13,7 @@ from app.api.v1.endpoints import (
     emergency,
     provenance,
     viewer,
+    forensics,
 )
 
 api_router = APIRouter()
@@ -28,5 +29,7 @@ api_router.include_router(approvals.router, tags=["Multi-Party Approval"])
 api_router.include_router(emergency.router, tags=["Emergency Break-Glass Access"])
 api_router.include_router(provenance.router, tags=["Cryptographic Provenance"])
 api_router.include_router(viewer.router, tags=["Secure Document Viewer"])
+api_router.include_router(forensics.router, tags=["Forensic Leak Detection"])
+
 
 

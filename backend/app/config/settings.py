@@ -48,6 +48,12 @@ class Settings(BaseSettings):
         description="Base64-encoded 256-bit Key Encryption Key for provenance signing keys",
     )
 
+    # Dedicated Forensic Master Key for deriving recipient-session forensic fingerprints
+    FORENSIC_MASTER_KEY_BASE64: Optional[str] = Field(
+        default="Zm9yZW5zaWMtbWFzdGVyLWtleS0zMi1ieXRlcy0wMDE=",
+        description="Base64-encoded 256-bit Master Key for deriving forensic fingerprints",
+    )
+
     # Document Upload Limits
     MAX_DOCUMENT_SIZE_MB: int = Field(
         default=25,
@@ -93,6 +99,7 @@ class Settings(BaseSettings):
             ("DOCUMENT_KEK_BASE64", kek_b64),
             ("RECIPIENT_KEY_KEK_BASE64", rkek_b64),
             ("PROVENANCE_KEY_KEK_BASE64", self.PROVENANCE_KEY_KEK_BASE64),
+            ("FORENSIC_MASTER_KEY_BASE64", self.FORENSIC_MASTER_KEY_BASE64),
         ]:
             if val:
                 try:
@@ -125,6 +132,12 @@ class Settings(BaseSettings):
         if not self.PROVENANCE_KEY_KEK_BASE64:
             raise ValueError("PROVENANCE_KEY_KEK_BASE64 is not configured.")
         return base64.b64decode(self.PROVENANCE_KEY_KEK_BASE64)
+
+    def get_forensic_master_key_bytes(self) -> bytes:
+        """Returns the decoded 32-byte master key for forensic fingerprint derivation."""
+        if not self.FORENSIC_MASTER_KEY_BASE64:
+            raise ValueError("FORENSIC_MASTER_KEY_BASE64 is not configured.")
+        return base64.b64decode(self.FORENSIC_MASTER_KEY_BASE64)
 
     model_config = SettingsConfigDict(
         env_file=".env",

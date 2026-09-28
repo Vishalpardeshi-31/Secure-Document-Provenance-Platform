@@ -20,6 +20,7 @@ from app.provenance.models import (
     LedgerOutbox,
 )
 from app.models.viewer_session import ViewerSession
+from app.models.forensic_fingerprint import ForensicFingerprint
 
 __all__ = [
     "Base",
@@ -44,5 +45,6 @@ __all__ = [
     "ProvenanceChainHead",
     "LedgerOutbox",
     "ViewerSession",
+    "ForensicFingerprint",
 ]
 
