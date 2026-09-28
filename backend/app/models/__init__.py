@@ -21,6 +21,12 @@ from app.provenance.models import (
 )
 from app.models.viewer_session import ViewerSession
 from app.models.forensic_fingerprint import ForensicFingerprint
+from app.models.investigation import (
+    InvestigationCase,
+    InvestigationEvidence,
+    InvestigationCustodyEvent,
+    InvestigationResult,
+)
 
 __all__ = [
     "Base",
@@ -46,5 +52,9 @@ __all__ = [
     "LedgerOutbox",
     "ViewerSession",
     "ForensicFingerprint",
+    "InvestigationCase",
+    "InvestigationEvidence",
+    "InvestigationCustodyEvent",
+    "InvestigationResult",
 ]
 

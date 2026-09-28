@@ -8,6 +8,7 @@ import { AuditSection } from './AuditSection';
 import { SessionSection } from './SessionSection';
 import { DocumentsSection } from './DocumentsSection';
 import { RecipientKeysSection } from './RecipientKeysSection';
+import { InvestigationSection } from './InvestigationSection';
 import { Department } from '../types/auth';
 import { adminService } from '../services/admin';
 
@@ -23,6 +24,7 @@ export const AppShellPage: React.FC = () => {
       case 'ADMIN':
         return [
           { id: 'documents', label: 'Documents' },
+          { id: 'investigations', label: 'Leak Investigations' },
           { id: 'recipient_keys', label: 'Recipient Keys' },
           { id: 'users', label: 'Users' },
           { id: 'departments', label: 'Departments' },
@@ -38,6 +40,7 @@ export const AppShellPage: React.FC = () => {
         ];
       case 'AUDITOR':
         return [
+          { id: 'investigations', label: 'Leak Investigations' },
           { id: 'audit', label: 'Audit / Provenance' },
           { id: 'devices', label: 'Registered Devices' },
           { id: 'session', label: 'Active Session' },
@@ -119,6 +122,10 @@ export const AppShellPage: React.FC = () => {
 
         {activeTab === 'audit' && (role === 'ADMIN' || role === 'AUDITOR') && (
           <AuditSection />
+        )}
+
+        {activeTab === 'investigations' && (role === 'ADMIN' || role === 'AUDITOR') && (
+          <InvestigationSection />
         )}
 
         {activeTab === 'session' && <SessionSection />}

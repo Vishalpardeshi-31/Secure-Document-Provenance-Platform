@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     provenance,
     viewer,
     forensics,
+    investigations,
 )
 
 api_router = APIRouter()
@@ -30,6 +31,7 @@ api_router.include_router(emergency.router, tags=["Emergency Break-Glass Access"
 api_router.include_router(provenance.router, tags=["Cryptographic Provenance"])
 api_router.include_router(viewer.router, tags=["Secure Document Viewer"])
 api_router.include_router(forensics.router, tags=["Forensic Leak Detection"])
+api_router.include_router(investigations.router, tags=["Forensic Investigations"])
 
 
 

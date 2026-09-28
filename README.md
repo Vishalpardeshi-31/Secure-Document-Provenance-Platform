@@ -741,3 +741,98 @@ When forensic evidence is submitted to `POST /api/v1/forensics/detect`, the dete
 3. **Analog Hole / Screen Capture**: Physical capture (e.g., an external smartphone photographing an active display) cannot be blocked entirely by client software. Forensic fingerprinting operates as a deterrent and post-hoc investigative capability.
 4. **Zero Impact on Source Integrity**: Original encrypted documents in object storage remain byte-for-byte immutable; watermarking is applied strictly in volatile memory during authorized viewer rendering.
 5. **Access Control**: Forensic detection and evaluation APIs are strictly restricted to `ADMIN` and `AUDITOR` roles. Recipients and departmental officers have zero access to forensic lookup endpoints or master keys.
+
+---
+
+## 16. Phase 13 - Forensic Investigation & Leak Attribution Workflow
+
+### A. Architectural Overview & Workflow Lifecycle
+
+Phase 13 implements a comprehensive, evidence-driven **Forensic Investigation & Leak Attribution Workflow**. Investigators can deposit intercepted leaked documents (photographs, screenshots, print scans, or digital exports), verify evidence integrity, run forensic signal extraction, and perform end-to-end cryptographic provenance verification.
+
+```text
+INTERCEPTED LEAK (Suspected Document / Photo / Scan)
+               │
+               ▼
+1. Create Investigation Case (POST /api/v1/investigations)
+         ├── Role-Based Access Control: ADMIN or AUDITOR only
+         ├── Generates unique Case Reference (CASE-YYYYMMDD-XXXXXX)
+         └── Records INVESTIGATION_CREATED audit event
+               │
+               ▼
+2. Deposit Evidence Artifact (POST /api/v1/investigations/{case_id}/evidence)
+         ├── Format whitelist: PDF, PNG, JPEG, WebP (Executable content blocked: HTTP 415)
+         ├── SHA-256 integrity hash computed & verified upon write
+         ├── Stored in isolated non-public directory (storage/evidence/) with path traversal checks
+         └── Records immutable EVIDENCE_UPLOADED and EVIDENCE_HASHED chain of custody events
+               │
+               ▼
+3. Execute Forensic Analysis (POST /api/v1/investigations/{case_id}/analyze)
+         │
+         ├── Phase 12 2D-DCT DSSS Spread-Spectrum Signal Extraction
+         │       ├── If NO fingerprint detected ──► Status: NO_DETECTABLE_FINGERPRINT
+         │       └── If fingerprint detected ──────► Recover 32-bit token
+         │
+         ├── Session Correlation & Database Lookup
+         │       └── Map token to ForensicFingerprint, Recipient, Viewer Session & Document
+         │
+         ├── Independent Post-Quantum ML-DSA-65 Signature Recomputation
+         │       └── Recomputes canonical bytes & verifies digital signature on provenance record
+         │
+         ├── Tamper-Evident Provenance Hash Chain Continuity Verification
+         │       └── Verifies genesis, sequence numbers, record hashes, and chain links
+         │
+         └── Append-Only Ledger Anchor Transaction Verification
+                 └── Verifies chain hash against configured ledger adapter
+               │
+               ▼
+4. Formal Investigation Result & Exportable Report
+         ├── Factual, objective narrative (Association vs. Intent)
+         ├── Complete Chronological Investigation Timeline
+         ├── Immutable Chain of Custody Audit Trail
+         └── Exportable Investigation Report with SHA-256 verification hash
+```
+
+### B. Security & Legal Distinctions
+
+1. **Association vs. Intent**: The platform reports factual, mathematically verifiable findings:
+   > *"An embedded forensic fingerprint was detected and cryptographically associated with authorized viewing session X and decryption session Y, issued to recipient Z."*
+   The platform explicitly does **not** assert:
+   > *"User X leaked the document."*
+   The system never infers intent, motive, or whether the recipient intentionally created or distributed the leak. An investigator interprets the evidence considering factors such as endpoint compromise or visual shoulder-surfing.
+2. **Immutability of Evidence**: Deposited evidence artifacts are write-once. Re-deposits create incremented evidence versions (`evidence_version = 2`) rather than silently replacing historical records.
+3. **Anti-Enumeration & Zero Key Exposure**: Investigators cannot enumerate all platform fingerprints or view arbitrary recipient-fingerprint mappings. Analysis is evidence-driven: an investigator must possess real evidence to detect a token. Private keys (ML-KEM, ML-DSA, DEKs, forensic master key) never appear in API responses.
+
+### C. Formal Investigation Result States
+
+| Result State | Interpretation | Cryptographic Proof |
+| :--- | :--- | :--- |
+| **`FINGERPRINT_DETECTED_PROVENANCE_VALID`** | Genuine fingerprint detected; session correlated; ML-DSA-65 signature valid; hash chain intact. | High-confidence cryptographic attribution. |
+| **`FINGERPRINT_DETECTED_PROVENANCE_INVALID`** | Fingerprint detected, but stored ML-DSA-65 provenance signature failed mathematical recomputation. | Provenance tampering or key corruption detected. |
+| **`FINGERPRINT_DETECTED_CHAIN_INVALID`** | Fingerprint detected, but hash chain sequence or previous record hash link is broken. | Ledger or database ledger chain tampering detected. |
+| **`FINGERPRINT_DETECTED_LEDGER_MISMATCH`** | Fingerprint detected, but chain hash does not match the confirmed ledger transaction anchor. | Ledger anchoring discrepancy detected. |
+| **`NO_DETECTABLE_FINGERPRINT`** | No spread-spectrum watermark recovered from evidence. | Signal absent, heavily compressed, or non-watermarked reproduction. |
+| **`UNSUPPORTED_EVIDENCE_FORMAT`** | Submitted file format cannot be processed in the 2D-DCT frequency domain. | Unsupported media type. |
+
+### D. Verification & Automated Test Coverage
+
+The Phase 13 workflow is verified by 19 automated test suites in `backend/tests/test_investigations_phase13.py`:
+1. `test_01_unauthorized_user_cannot_create_investigation`: Unauthenticated requests rejected (HTTP 401/403).
+2. `test_02_recipient_cannot_access_investigation_apis`: Recipient role strictly blocked (HTTP 403).
+3. `test_03_officer_cannot_access_investigation_apis`: Officer role strictly blocked (HTTP 403).
+4. `test_04_admin_and_auditor_can_create_and_list_cases`: Admin and Auditor authorized to manage cases.
+5. `test_05_evidence_sha256_calculated_correctly_on_upload`: Exact SHA-256 verification on evidence deposit.
+6. `test_06_evidence_cannot_be_silently_overwritten`: Version incrementation preserves historical evidence records.
+7. `test_07_custody_events_logged_on_evidence_deposit`: `EVIDENCE_UPLOADED` and `EVIDENCE_HASHED` logged in custody chain.
+8. `test_08_no_fingerprint_evidence_returns_no_detectable_fingerprint`: Clean unmarked document correctly identified.
+9. `test_09_unsupported_evidence_format_returns_unsupported`: Executables and non-visual binaries rejected (HTTP 415).
+10. `test_10_and_11_and_12_genuine_fingerprinted_evidence_detects_and_verifies_provenance`: Real leak detection, session correlation, and ML-DSA-65 signature verification.
+11. `test_13_tampered_provenance_signature_is_detected`: Corrupted ML-DSA signature detected (`FINGERPRINT_DETECTED_PROVENANCE_INVALID`).
+12. `test_14_tampered_provenance_chain_is_detected`: Broken chain hash detected (`FINGERPRINT_DETECTED_CHAIN_INVALID`).
+13. `test_15_ledger_verification_status_accurately_reflected`: Unanchored/pending records report actual state without fabrication.
+14. `test_17_confidence_score_is_never_fabricated`: DSSS correlation score verified strictly within $[0.0, 1.0]$.
+15. `test_18_exportable_report_contains_results_and_verifiable_sha256`: Exportable report generated with SHA-256 integrity hash.
+16. `test_19_investigation_actions_generate_real_audit_events`: Audit trail entries chained cryptographically.
+17. `test_20_private_cryptographic_keys_never_appear_in_responses`: Responses sanitized of private keys and secrets.
+18. `test_21_factual_timeline_is_built_from_real_records`: Chronological event sequencing from document upload to detection.
+19. `test_22_end_to_end_recipient_a_vs_recipient_b_attribution`: Dual-recipient test verifying distinct fingerprints and zero cross-talk attribution.
