@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
