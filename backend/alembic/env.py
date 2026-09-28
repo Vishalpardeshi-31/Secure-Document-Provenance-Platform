@@ -1,7 +1,7 @@
 import os
 import sys
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text as sa_text
 from alembic import context
 
 # Ensure backend directory is in sys.path
@@ -49,6 +49,14 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        try:
+            connection.execute(
+                sa_text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(128) NOT NULL, CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num));")
+            )
+            connection.commit()
+        except Exception:
+            pass
+
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
