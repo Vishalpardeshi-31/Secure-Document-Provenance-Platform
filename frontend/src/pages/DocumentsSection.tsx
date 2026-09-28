@@ -18,6 +18,7 @@ import { adminService } from '../services/admin';
 import { useAuth } from '../hooks/useAuth';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { formatDate } from '../lib/utils';
+import { DecryptedDocumentViewer } from '../components/DecryptedDocumentViewer';
 import {
   FileUp,
   Trash2,
@@ -29,7 +30,6 @@ import {
   Clock,
   Smartphone,
   Settings2,
-  X,
   ShieldAlert,
   CheckCircle2,
   AlertTriangle,
@@ -733,44 +733,6 @@ export const DocumentsSection: React.FC = () => {
     return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
   };
 
-  // Helper to decode plaintext for safe preview
-  const renderPlaintextContent = (b64: string, mime: string) => {
-    try {
-      const raw = atob(b64);
-      if (
-        mime.includes('text') ||
-        mime.includes('json') ||
-        mime.includes('csv') ||
-        mime.includes('javascript') ||
-        mime.includes('xml')
-      ) {
-        return (
-          <pre className="p-3 bg-slate-950 border border-slate-800 rounded font-mono text-xs text-slate-200 overflow-x-auto max-h-96 whitespace-pre-wrap">
-            {raw}
-          </pre>
-        );
-      }
-      if (mime.startsWith('image/')) {
-        return (
-          <div className="flex justify-center p-3 bg-slate-950 border border-slate-800 rounded">
-            <img src={`data:${mime};base64,${b64}`} alt="Decrypted file" className="max-h-96 object-contain" />
-          </div>
-        );
-      }
-      return (
-        <div className="p-4 bg-slate-950 border border-slate-800 rounded text-xs text-slate-400 font-mono">
-          <p className="text-emerald-400 font-semibold mb-1">Binary Document Decrypted & Authenticated</p>
-          <p>MIME Type: {mime}</p>
-          <p>Byte Length: {raw.length} bytes</p>
-          <p className="mt-2 text-slate-500 italic">
-            Ephemeral in-memory preview loaded. Plaintext will be securely purged on modal close.
-          </p>
-        </div>
-      );
-    } catch {
-      return <div className="text-xs text-rose-400 font-mono">Binary payload decoded in memory.</div>;
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -1999,81 +1961,14 @@ export const DocumentsSection: React.FC = () => {
         </div>
       )}
 
-      {/* Controlled Decrypted Document Viewer Modal (Phase 5) */}
+      {/* Controlled Decrypted Document Viewer Modal supporting PDFs, Images, Office Docs, Text */}
       {decryptedResult && (
-        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4">
-          <div className="bg-surface border border-emerald-800/80 rounded-lg max-w-2xl w-full p-5 space-y-4 font-mono text-xs shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <div className="flex items-center gap-2">
-                <Unlock className="w-5 h-5 text-emerald-400" />
-                <div>
-                  <h3 className="font-bold text-slate-100 text-sm">{decryptedResult.original_filename}</h3>
-                  <span className="text-[10px] text-emerald-400">
-                    Cryptographically Decrypted & Authenticated (AES-256-GCM)
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={handleCloseViewer}
-                className="text-slate-400 hover:text-slate-200 text-base"
-                title="Close and purge in-memory plaintext"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Emergency Break-Glass Alert Banner */}
-            {isEmergencySession && (
-              <div className="p-2.5 rounded bg-rose-950/80 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-                <div>
-                  <span className="font-bold">EMERGENCY BREAK-GLASS DECRYPTION SESSION</span>
-                  <p className="text-[11px] text-rose-400/90">
-                    Decryption executed under emergency authorization protocol. All events are logged to the provenance audit log.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Cryptographic Session & Provenance Badges */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-slate-950 p-2.5 rounded border border-slate-800 text-[10px]">
-              <div>
-                <span className="text-slate-500 block uppercase">Session ID</span>
-                <span className="text-slate-300 font-mono select-all">
-                  {decryptedResult.session_id.slice(0, 13)}…
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 block uppercase">Plaintext SHA-256</span>
-                <span className="text-slate-300 font-mono select-all" title={decryptedResult.plaintext_sha256}>
-                  {decryptedResult.plaintext_sha256.slice(0, 16)}…
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 block uppercase">Completed</span>
-                <span className="text-emerald-400 font-mono">{formatDate(decryptedResult.completed_at)}</span>
-              </div>
-            </div>
-
-            {/* Plaintext Controlled View */}
-            <div>
-              <span className="text-slate-400 text-[11px] uppercase block mb-1.5">Controlled Document View</span>
-              {renderPlaintextContent(decryptedResult.plaintext_base64, decryptedResult.mime_type)}
-            </div>
-
-            <div className="flex items-center justify-between pt-3 border-t border-border-subtle">
-              <span className="text-[10px] text-slate-500 italic">
-                Ephemeral in-memory view. No plaintext stored on disk.
-              </span>
-              <button
-                onClick={handleCloseViewer}
-                className="px-4 py-1.5 text-xs bg-rose-900/60 hover:bg-rose-800 border border-rose-700 text-white rounded font-medium transition-colors"
-              >
-                Close & Destroy In-Memory Plaintext
-              </button>
-            </div>
-          </div>
-        </div>
+        <DecryptedDocumentViewer
+          result={decryptedResult}
+          isEmergencySession={isEmergencySession}
+          onClose={handleCloseViewer}
+          formatDate={formatDate}
+        />
       )}
 
       {/* Emergency Break-Glass Access Modal (Phase 8) */}
