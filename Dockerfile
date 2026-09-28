@@ -24,7 +24,7 @@ RUN useradd -m -u 1000 appuser && \
 
 USER appuser
 
-EXPOSE 10000
+EXPOSE 8000
 
-# Run database migrations, bootstrap admin account, and launch Uvicorn on dynamic $PORT
-CMD ["sh", "-c", "python -c \"from alembic.config import Config; from alembic import command; cfg=Config('alembic.ini'); command.upgrade(cfg, 'head')\" || true && (python init_admin.py || true) && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+# Run database migrations, bootstrap admin account if env provided, and launch Uvicorn on dynamic $PORT
+CMD ["sh", "-c", "alembic -c alembic.ini upgrade head && (python init_admin.py || true) && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
