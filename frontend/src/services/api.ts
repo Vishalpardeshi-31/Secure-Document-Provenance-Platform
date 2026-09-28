@@ -5,10 +5,34 @@ const API_BASE = envApiUrl ? `${envApiUrl}/api/v1` : '/api/v1';
 
 interface RequestOptions extends RequestInit {
   token?: string | null;
+  retries?: number;
+}
+
+// Fetch helper with automated retry for handling free-tier cold-start wake-up periods
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2, delayMs = 2500): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      // If server returns gateway wake-up error (502, 503, 504), wait and retry
+      if ((response.status === 502 || response.status === 503 || response.status === 504) && attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, delayMs));
+        continue;
+      }
+      return response;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, delayMs));
+        continue;
+      }
+    }
+  }
+  throw lastError;
 }
 
 export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { token, headers = {}, ...customConfig } = options;
+  const { token, headers = {}, retries = 2, ...customConfig } = options;
 
   const requestHeaders: Record<string, string> = {
     ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
@@ -23,14 +47,14 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithRetry(url, {
       ...customConfig,
       headers: requestHeaders,
-    });
+    }, retries);
   } catch (networkError) {
     // API unavailable / network connection error
     throw new ApiError(
-      'Unable to connect to the security backend. The server may be offline or unreachable.',
+      'Unable to reach security backend. The free-tier server is spinning up from standby (~30-50s) or is unreachable. Please wait a moment and retry.',
       'API_UNAVAILABLE',
       0
     );
@@ -49,7 +73,7 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
     data = await response.text();
     if (typeof data === 'string' && (data.trim().startsWith('<!doctype') || data.trim().startsWith('<html'))) {
       throw new ApiError(
-        'Unable to connect to the security backend. The server returned an HTML error page.',
+        'The security server returned a temporary gateway page. The service may be waking up from sleep. Please try again.',
         'API_UNAVAILABLE',
         response.status
       );
@@ -92,7 +116,7 @@ export async function requestBlob(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<{ blob: Blob; contentType: string; filename?: string }> {
-  const { token, headers = {}, ...customConfig } = options;
+  const { token, headers = {}, retries = 2, ...customConfig } = options;
 
   const requestHeaders: Record<string, string> = {
     ...(headers as Record<string, string>),
@@ -106,13 +130,13 @@ export async function requestBlob(
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithRetry(url, {
       ...customConfig,
       headers: requestHeaders,
-    });
+    }, retries);
   } catch {
     throw new ApiError(
-      'Unable to connect to the security backend. The server may be offline or unreachable.',
+      'Unable to reach security backend. The server may be waking up from standby. Please retry shortly.',
       'API_UNAVAILABLE',
       0
     );
