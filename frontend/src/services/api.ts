@@ -1,6 +1,7 @@
 import { ApiError, ApiErrorPayload } from '../types/api';
 
-const API_BASE = '/api/v1';
+const envApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/+$/, '');
+const API_BASE = envApiUrl ? `${envApiUrl}/api/v1` : '/api/v1';
 
 interface RequestOptions extends RequestInit {
   token?: string | null;

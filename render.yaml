@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: sdpp-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: DOCUMENT_KEK_BASE64
+        sync: false
+      - key: RECIPIENT_KEY_KEK_BASE64
+        sync: false
+      - key: PROVENANCE_KEY_KEK_BASE64
+        sync: false
+      - key: MFA_ENCRYPTION_KEY_BASE64
+        sync: false
+      - key: FORENSIC_MASTER_KEY_BASE64
+        sync: false
+      - key: CORS_ORIGINS
+        value: http://localhost:5173
+      - key: INITIAL_ADMIN_USERNAME
+        value: admin
+      - key: INITIAL_ADMIN_EMAIL
+        value: admin@security.internal
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false

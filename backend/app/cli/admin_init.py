@@ -37,10 +37,19 @@ def initialize_admin():
     password = args.password or os.getenv("INITIAL_ADMIN_PASSWORD")
 
     if not username:
+        if not sys.stdin or not sys.stdin.isatty():
+            print("[INFO] No INITIAL_ADMIN_USERNAME specified and non-interactive shell. Skipping admin auto-init.", file=sys.stderr)
+            return
         username = input("Enter Administrator Username: ").strip()
     if not email:
-        email = input("Enter Administrator Email: ").strip()
+        if not sys.stdin or not sys.stdin.isatty():
+            email = f"{username}@security.internal"
+        else:
+            email = input("Enter Administrator Email: ").strip()
     if not password:
+        if not sys.stdin or not sys.stdin.isatty():
+            print("[INFO] No INITIAL_ADMIN_PASSWORD specified and non-interactive shell. Skipping admin auto-init.", file=sys.stderr)
+            return
         password = getpass.getpass("Enter Administrator Password (min 12 chars, upper/lower/digit/symbol): ")
         password_confirm = getpass.getpass("Confirm Administrator Password: ")
         if password != password_confirm:
