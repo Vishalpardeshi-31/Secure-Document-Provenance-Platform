@@ -194,10 +194,14 @@ def test_production_mode_refuses_default_recipient_kek():
             RECIPIENT_KEY_KEK_BASE64=DEV_DEFAULT_RECIPIENT_KEK_BASE64,
         )
 
-    # Should succeed with fresh 32-byte keys for both
+    # Should succeed with fresh 32-byte keys for all production KEKs and secret
     settings = Settings(
         ENVIRONMENT="production",
+        SECRET_KEY="SuperSecureProductionSecretKeyWith32Chars!",
         DOCUMENT_KEK_BASE64=valid_32_bytes,
         RECIPIENT_KEY_KEK_BASE64=valid_32_bytes,
+        PROVENANCE_KEY_KEK_BASE64=valid_32_bytes,
+        MFA_ENCRYPTION_KEY_BASE64=valid_32_bytes,
+        FORENSIC_MASTER_KEY_BASE64=valid_32_bytes,
     )
     assert settings.get_recipient_kek_bytes() == base64.b64decode(valid_32_bytes)

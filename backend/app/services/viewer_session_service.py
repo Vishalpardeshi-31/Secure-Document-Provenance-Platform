@@ -184,6 +184,22 @@ class ViewerSessionService:
             )
             raise PermissionError("VIEWER_DEVICE_MISMATCH: Viewer session is bound to a different registered device.")
 
+        # Validate that the bound device is not revoked
+        if session.device_id:
+            from app.models.device import Device
+            dev = db.query(Device).filter(Device.id == session.device_id).first()
+            if dev and (dev.status == "REVOKED" or dev.registration_status == "REVOKED"):
+                session.status = "REVOKED"
+                db.commit()
+                AuditService.log_event(
+                    db=db,
+                    event_type="VIEWER_SESSION_REJECTED",
+                    user_id=user.id,
+                    document_id=session.document_id,
+                    metadata={"viewer_session_id": session_id, "reason": "VIEWER_DEVICE_REVOKED"},
+                )
+                raise PermissionError("VIEWER_DEVICE_REVOKED: The registered device bound to this viewer session has been revoked.")
+
         # Check document revocation
         doc = db.query(Document).filter(Document.id == session.document_id).first()
         if not doc or doc.status == "REVOKED":

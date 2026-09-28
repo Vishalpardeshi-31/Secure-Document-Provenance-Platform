@@ -3,14 +3,23 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from app.config.settings import settings
 
-# Engine configuration with connection health checking
-# pool_pre_ping ensures stale/disconnected pool connections are recycled safely
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-)
+# Engine configuration — SQLite and PostgreSQL require different pool settings
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+
+if _is_sqlite:
+    # SQLite: no connection pooling args; check_same_thread=False required for FastAPI
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_pre_ping=True,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+    )
 
 SessionLocal = sessionmaker(
     autocommit=False,

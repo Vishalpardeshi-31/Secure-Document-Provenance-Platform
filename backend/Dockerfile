@@ -17,6 +17,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy backend application source and migrations
 COPY . .
 
+# Create non-root application user and ensure permissions on runtime storage
+RUN useradd -m -u 1000 appuser && \
+    mkdir -p /app/storage/encrypted /app/storage/ledger && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
 # Expose backend port
 EXPOSE 8000
 

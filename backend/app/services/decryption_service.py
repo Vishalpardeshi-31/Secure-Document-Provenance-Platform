@@ -272,8 +272,6 @@ class DecryptionService:
             )
 
             # Step 4: Cryptographic Decryption Workflow
-            session.status = "DECRYPTING"
-            db.commit()
 
             try:
                 # 4a. Retrieve recipient key record matching recipient key version

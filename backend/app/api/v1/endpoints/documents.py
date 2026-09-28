@@ -16,8 +16,8 @@ from app.services.document_service import DocumentService
 from app.services.decryption_service import DecryptionService
 from app.services.policy_service import PolicyService
 from app.policies.service import PolicyService as EnginePolicyService
-from app.policies.exceptions import PolicyConfigurationException
-from app.security.permissions import get_current_user, require_any_role
+from app.models.device import Device
+from app.security.permissions import get_current_user, require_any_role, require_step_up_assurance
 
 router = APIRouter()
 
@@ -280,13 +280,14 @@ def decrypt_document(
     request: Optional[DecryptionRequest] = Body(None),
     x_device_id: Optional[str] = Header(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_step_up_assurance()),
 ):
     """Evaluates recipient authorization and document access policy, decapsulates
     the recipient's wrapped DEK via ML-KEM-768, verifies ciphertext integrity, authenticates
     and decrypts AES-256-GCM, validates plaintext hash, records audit events, and returns
     ephemeral decrypted content for the controlled viewer."""
     effective_device_id = (request.device_id if request and request.device_id else None) or x_device_id
+
 
     try:
         session, plaintext = DecryptionService.request_and_decrypt(

@@ -4,6 +4,8 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
+import threading
+from sqlalchemy import event
 from fastapi.testclient import TestClient
 
 # Ensure backend directory is in sys.path
@@ -14,10 +16,6 @@ from app.database.session import get_db
 from app.main import app
 from app.models import Role, UserRole
 
-import threading
-from sqlalchemy import event
-
-# Use SQLite in-memory with StaticPool for isolated, shared-memory test runs
 TEST_DATABASE_URL = "sqlite:///:memory:"
 
 test_engine = create_engine(
@@ -56,7 +54,10 @@ def client(db_session):
         finally:
             s.close()
 
+    from app.security.rate_limiter import auth_rate_limiter
+    auth_rate_limiter._requests.clear()
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
         yield c
+    auth_rate_limiter._requests.clear()
     app.dependency_overrides.clear()

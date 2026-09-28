@@ -50,6 +50,20 @@ app.add_middleware(
 )
 
 
+import uuid
+
+
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    """Enforces request correlation ID tracking across every backend operation."""
+    correlation_id = request.headers.get("X-Request-ID") or request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
+    request.state.request_id = correlation_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = correlation_id
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
+
+
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     """Enforces standard HTTP security response headers."""
@@ -58,6 +72,19 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if hasattr(request.state, "request_id"):
+        response.headers["X-Request-ID"] = request.state.request_id
+    if "Content-Security-Policy" not in response.headers:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*; "
+            "frame-ancestors 'none'; "
+            "object-src 'none';"
+        )
     return response
 
 
@@ -147,4 +174,5 @@ def root():
         "status": "OPERATIONAL",
         "api_documentation": f"{settings.API_V1_STR}/docs" if settings.ENVIRONMENT != "production" else None,
         "health_endpoint": f"{settings.API_V1_STR}/health",
+        "readiness_endpoint": f"{settings.API_V1_STR}/health/ready",
     }

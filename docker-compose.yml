@@ -32,10 +32,17 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1:5173}
       STORAGE_PATH: /app/storage/encrypted
+      LEDGER_STORAGE_PATH: /app/storage/ledger
+      DOCUMENT_KEK_BASE64: ${DOCUMENT_KEK_BASE64:-}
+      RECIPIENT_KEY_KEK_BASE64: ${RECIPIENT_KEY_KEK_BASE64:-}
+      PROVENANCE_KEY_KEK_BASE64: ${PROVENANCE_KEY_KEK_BASE64:-}
+      MFA_ENCRYPTION_KEY_BASE64: ${MFA_ENCRYPTION_KEY_BASE64:-}
+      FORENSIC_MASTER_KEY_BASE64: ${FORENSIC_MASTER_KEY_BASE64:-}
       ENVIRONMENT: ${ENVIRONMENT:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - encrypted_storage:/app/storage/encrypted
+      - ledger_storage:/app/storage/ledger
     ports:
       - "8000:8000"
     depends_on:
@@ -68,6 +75,8 @@ volumes:
   postgres_data:
     driver: local
   encrypted_storage:
+    driver: local
+  ledger_storage:
     driver: local
 
 networks:

@@ -39,6 +39,15 @@ class Device(Base, TimestampMixin):
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    public_key: Mapped[Optional[str]] = mapped_column(
+        String(512), nullable=True
+    )
+    challenge_nonce: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True
+    )
+    challenge_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="devices")  # noqa: F821

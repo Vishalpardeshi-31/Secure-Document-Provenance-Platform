@@ -12,7 +12,7 @@ from app.schemas.approval import (
     ApprovalDecisionRequest,
 )
 from app.services.approval_service import ApprovalService
-from app.security.permissions import get_current_user
+from app.security.permissions import get_current_user, require_step_up_assurance
 
 router = APIRouter()
 
@@ -133,7 +133,7 @@ def approve_decryption_request(
     request_id: str,
     decision_data: Optional[ApprovalDecisionRequest] = Body(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_step_up_assurance()),
 ):
     """Records an approval decision. Enforces approver independence, role eligibility, and thresholds."""
     try:

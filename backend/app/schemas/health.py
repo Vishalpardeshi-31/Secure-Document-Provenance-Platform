@@ -15,3 +15,14 @@ class HealthResponse(BaseModel):
     environment: str
     timestamp: datetime
     database: ComponentHealth
+
+
+class ReadinessResponse(BaseModel):
+    status: str  # READY or NOT_READY
+    project: str
+    environment: str
+    timestamp: datetime
+    database: ComponentHealth
+    storage: ComponentHealth
+    crypto: ComponentHealth
+    ledger: ComponentHealth

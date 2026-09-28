@@ -27,6 +27,8 @@ from app.models.investigation import (
     InvestigationCustodyEvent,
     InvestigationResult,
 )
+from app.models.mfa import UserMfaCredential
+from app.models.session import UserSession
 
 __all__ = [
     "Base",
@@ -56,5 +58,7 @@ __all__ = [
     "InvestigationEvidence",
     "InvestigationCustodyEvent",
     "InvestigationResult",
+    "UserMfaCredential",
+    "UserSession",
 ]
 

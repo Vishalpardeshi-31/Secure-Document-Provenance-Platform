@@ -13,8 +13,9 @@ from app.schemas.emergency import (
     EmergencyAccessResponse,
 )
 from app.schemas.decryption import DecryptionResultResponse
+from app.models.device import Device
 from app.services.emergency_service import EmergencyAccessService
-from app.security.permissions import get_current_user
+from app.security.permissions import get_current_user, require_step_up_assurance
 
 router = APIRouter()
 
@@ -46,7 +47,7 @@ def create_emergency_access_request(
     document_id: str,
     request_data: EmergencyAccessCreateRequest = Body(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_step_up_assurance()),
 ):
     """Initiates an emergency break-glass access request requiring explicit reason and authorization."""
     try:
@@ -108,7 +109,7 @@ def approve_emergency_access_request(
     request_id: str,
     decision_data: Optional[EmergencyDecisionRequest] = Body(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_step_up_assurance()),
 ):
     """Authorizes an emergency break-glass request. Enforces independent emergency approver."""
     try:
@@ -162,9 +163,17 @@ def execute_emergency_decryption(
     emergency_request_id: Optional[str] = Body(None, embed=True),
     x_device_id: Optional[str] = Header(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_step_up_assurance()),
 ):
     """Executes authorized emergency document decryption under explicit server-controlled key access."""
+    if x_device_id:
+        dev = db.query(Device).filter(Device.id == x_device_id).first()
+        if not dev or dev.status == "REVOKED" or dev.registration_status == "REVOKED" or dev.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Emergency decryption denied: device is revoked or unauthorized.",
+            )
+
     try:
         session, plaintext = EmergencyAccessService.execute_emergency_decryption(
             db=db,

@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 DEV_DEFAULT_KEK_BASE64 = "dGVzdC1kZXZlbG9wbWVudC1tYXN0ZXIta2VrLTMyYnk="
 DEV_DEFAULT_RECIPIENT_KEK_BASE64 = "cmVjaXBpZW50LXByb3RlY3Rpb24ta2VrLTMyYnl0ZXM="
 DEV_DEFAULT_PROVENANCE_KEK_BASE64 = "cHJvdmVuYW5jZS1rZXktcHJvdGVjdGlvbi1rZWstMzI="
+DEV_DEFAULT_MFA_KEK_BASE64 = "bWZhLWNyZWRlbnRpYWxzLXByb3RlY3Rpb24ta2V5MzI="
 
 
 class Settings(BaseSettings):
@@ -54,6 +55,12 @@ class Settings(BaseSettings):
         description="Base64-encoded 256-bit Master Key for deriving forensic fingerprints",
     )
 
+    # Dedicated Key-Protection Key for user MFA TOTP credentials at rest
+    MFA_ENCRYPTION_KEY_BASE64: Optional[str] = Field(
+        default=DEV_DEFAULT_MFA_KEK_BASE64,
+        description="Base64-encoded 256-bit Key Encryption Key for user MFA TOTP credentials",
+    )
+
     # Document Upload Limits
     MAX_DOCUMENT_SIZE_MB: int = Field(
         default=25,
@@ -94,12 +101,33 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "CRITICAL: Production deployment requires a secure, non-default RECIPIENT_KEY_KEK_BASE64 environment variable."
                 )
+            if not self.PROVENANCE_KEY_KEK_BASE64 or self.PROVENANCE_KEY_KEK_BASE64 == DEV_DEFAULT_PROVENANCE_KEK_BASE64:
+                raise ValueError(
+                    "CRITICAL: Production deployment requires a secure, non-default PROVENANCE_KEY_KEK_BASE64 environment variable."
+                )
+            if not self.MFA_ENCRYPTION_KEY_BASE64 or self.MFA_ENCRYPTION_KEY_BASE64 == DEV_DEFAULT_MFA_KEK_BASE64:
+                raise ValueError(
+                    "CRITICAL: Production deployment requires a secure, non-default MFA_ENCRYPTION_KEY_BASE64 environment variable."
+                )
+            if not self.FORENSIC_MASTER_KEY_BASE64 or self.FORENSIC_MASTER_KEY_BASE64 == "Zm9yZW5zaWMtbWFzdGVyLWtleS0zMi1ieXRlcy0wMDE=":
+                raise ValueError(
+                    "CRITICAL: Production deployment requires a secure, non-default FORENSIC_MASTER_KEY_BASE64 environment variable."
+                )
+            if not self.SECRET_KEY or self.SECRET_KEY == "change-me-in-production-minimum-32-chars-long-secret-key" or len(self.SECRET_KEY) < 32:
+                raise ValueError(
+                    "CRITICAL: Production deployment requires a strong, non-default SECRET_KEY of at least 32 characters."
+                )
+            if "*" in self.CORS_ORIGINS or any(o == "*" for o in (self.CORS_ORIGINS if isinstance(self.CORS_ORIGINS, list) else [])):
+                raise ValueError(
+                    "CRITICAL: Wildcard CORS origin ('*') is strictly prohibited in production mode."
+                )
 
         for name, val in [
             ("DOCUMENT_KEK_BASE64", kek_b64),
             ("RECIPIENT_KEY_KEK_BASE64", rkek_b64),
             ("PROVENANCE_KEY_KEK_BASE64", self.PROVENANCE_KEY_KEK_BASE64),
             ("FORENSIC_MASTER_KEY_BASE64", self.FORENSIC_MASTER_KEY_BASE64),
+            ("MFA_ENCRYPTION_KEY_BASE64", self.MFA_ENCRYPTION_KEY_BASE64),
         ]:
             if val:
                 try:
@@ -138,6 +166,12 @@ class Settings(BaseSettings):
         if not self.FORENSIC_MASTER_KEY_BASE64:
             raise ValueError("FORENSIC_MASTER_KEY_BASE64 is not configured.")
         return base64.b64decode(self.FORENSIC_MASTER_KEY_BASE64)
+
+    def get_mfa_encryption_key_bytes(self) -> bytes:
+        """Returns the decoded 32-byte key-protection key for user MFA TOTP credentials."""
+        if not self.MFA_ENCRYPTION_KEY_BASE64:
+            raise ValueError("MFA_ENCRYPTION_KEY_BASE64 is not configured.")
+        return base64.b64decode(self.MFA_ENCRYPTION_KEY_BASE64)
 
     model_config = SettingsConfigDict(
         env_file=".env",

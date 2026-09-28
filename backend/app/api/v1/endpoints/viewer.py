@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.models.user import User
-from app.security.permissions import get_current_user
+from app.models.device import Device
+from app.security.permissions import get_current_user, require_step_up_assurance
 from app.schemas.viewer import (
     ViewerSessionCreateRequest,
     ViewerSessionResponse,
@@ -59,12 +60,20 @@ def create_viewer_session(
     payload: ViewerSessionCreateRequest = ViewerSessionCreateRequest(),
     x_device_id: Optional[str] = Header(None, alias="X-Device-ID"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_step_up_assurance()),
 ):
     """Enforces policy, recipient authorization, device registration, and multi-party approvals,
     executes authenticated decryption, generates an ML-DSA-65 signed provenance record,
     and returns a short-lived secure viewer session."""
     device_id = payload.device_id or x_device_id
+    if device_id:
+        dev = db.query(Device).filter(Device.id == device_id).first()
+        if not dev or dev.status == "REVOKED" or dev.registration_status == "REVOKED" or dev.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Viewer session creation denied: device is revoked or unauthorized.",
+            )
+
     try:
         viewer_session, _, _ = ViewerSessionService.create_viewer_session(
             db=db,

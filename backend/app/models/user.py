@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Boolean, ForeignKey
+from sqlalchemy import String, Boolean, ForeignKey, Integer, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base, TimestampMixin
 from app.models.role import UserRole
@@ -36,6 +37,12 @@ class User(Base, TimestampMixin):
     can_emergency_decrypt: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
+    failed_login_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+    locked_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     role_rel: Mapped[Optional["Role"]] = relationship("Role", back_populates="users")  # noqa: F821
@@ -45,4 +52,6 @@ class User(Base, TimestampMixin):
     documents: Mapped[List["Document"]] = relationship("Document", back_populates="owner", cascade="all, delete-orphan")  # noqa: F821
     decryption_sessions: Mapped[List["DecryptionSession"]] = relationship("DecryptionSession", back_populates="user")  # noqa: F821
     audit_events: Mapped[List["AuditEvent"]] = relationship("AuditEvent", back_populates="user")  # noqa: F821
+    mfa_credential: Mapped[Optional["UserMfaCredential"]] = relationship("UserMfaCredential", back_populates="user", uselist=False, cascade="all, delete-orphan")  # noqa: F821
+    sessions: Mapped[List["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")  # noqa: F821
 
